@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import cytoscape from "cytoscape";
 
-const TIER_COLORS = { Low: "#334155", Medium: "#eab308", High: "#f97316", Critical: "#ef4444" };
+const TIER_COLORS = { Low: "#94a3b8", Medium: "#d97706", High: "#ea580c", Critical: "#e11d48" };
 
 export default function ThreatGraph({ graph }) {
   const containerRef = useRef(null);
@@ -26,12 +26,13 @@ export default function ThreatGraph({ graph }) {
         {
           selector: "node[type='employee']",
           style: {
-            "background-color": "#38bdf8",
+            "background-color": "#2563eb",
             label: "data(label)",
-            color: "#e2e8f0",
+            color: "#1e293b",
             "font-size": "9px",
-            width: 26,
-            height: 26,
+            "font-weight": "600",
+            width: 24,
+            height: 24,
             "text-valign": "bottom",
             "text-margin-y": 4,
           },
@@ -42,7 +43,7 @@ export default function ThreatGraph({ graph }) {
             "background-color": "#64748b",
             shape: "diamond",
             label: "data(label)",
-            color: "#94a3b8",
+            color: "#475569",
             "font-size": "8px",
             width: 18,
             height: 18,
@@ -53,12 +54,12 @@ export default function ThreatGraph({ graph }) {
         {
           selector: "edge",
           style: {
-            width: "mapData(weight, 0, 1000, 1, 6)",
-            "line-color": (ele) => TIER_COLORS[ele.data("risk_tier")] || "#334155",
-            "target-arrow-color": (ele) => TIER_COLORS[ele.data("risk_tier")] || "#334155",
+            width: "mapData(weight, 0, 1000, 1, 5)",
+            "line-color": (ele) => TIER_COLORS[ele.data("risk_tier")] || "#94a3b8",
+            "target-arrow-color": (ele) => TIER_COLORS[ele.data("risk_tier")] || "#94a3b8",
             "target-arrow-shape": "triangle",
             "curve-style": "bezier",
-            opacity: 0.85,
+            opacity: 0.8,
           },
         },
       ],
@@ -71,12 +72,12 @@ export default function ThreatGraph({ graph }) {
   }, [graph]);
 
   return (
-    <div className="rounded-xl bg-slate-900/60 ring-1 ring-slate-800 p-5">
+    <div className="rounded-xl bg-white ring-1 ring-slate-200/90 shadow-xs p-5">
       <div className="flex items-center justify-between mb-2">
-        <div className="text-sm font-medium text-slate-300">
-          Threat Graph — Employee &rarr; Destination
+        <div className="text-sm font-semibold text-slate-800">
+          Threat Graph &mdash; Employee &rarr; Destination
         </div>
-        <div className="flex gap-3 text-[10px] text-slate-400">
+        <div className="flex gap-3 text-[10px] text-slate-500 font-medium">
           {Object.entries(TIER_COLORS).map(([tier, color]) => (
             <span key={tier} className="flex items-center gap-1">
               <span className="w-2 h-2 rounded-full inline-block" style={{ background: color }} />
@@ -85,7 +86,7 @@ export default function ThreatGraph({ graph }) {
           ))}
         </div>
       </div>
-      <div ref={containerRef} className="w-full h-[420px]" />
+      <div ref={containerRef} className="w-full h-[420px] bg-slate-50/50 rounded-lg" />
     </div>
   );
 }

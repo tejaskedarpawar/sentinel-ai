@@ -1,0 +1,6 @@
+dataset,scenario,details,user,start,end
+r4.2,1,"User visits leak sites and competitor job boards, then exfiltrates IP via cloud storage",CMP0249,04/20/2026 00:00:00,05/10/2026 23:59:59
+r4.2,2,"Mass USB thumb-drive copy of proprietary CAD/software designs prior to resignation",ACM2278,05/05/2026 00:00:00,05/18/2026 23:59:59
+r4.2,3,"Off-hours logon from unusual PC and bulk exfiltration of customer database via personal email",EDB0714,04/10/2026 00:00:00,04/25/2026 23:59:59
+r4.2,1,"Off-hours data exfiltration to personal Dropbox and Wikileaks mirror",HAP0912,04/30/2026 00:00:00,05/20/2026 23:59:59
+r4.2,2,"Repeated unauthorized USB mass storage connects and bulk file transfers",RAR0321,05/12/2026 00:00:00,05/28/2026 23:59:59

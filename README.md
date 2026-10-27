@@ -66,6 +66,46 @@ To re-seed with a fresh simulated run (new random seed, or after code changes
 to the detection engine), just re-run `python -m app.pipeline` from inside
 `backend/` with the venv active.
 
+**4. Real-time Alert Streaming & Live Replay**
+Sentinel AI streams High and Critical security alerts to the SOC Dashboard in real-time
+via Server-Sent Events (SSE) at `GET /api/stream/alerts` backed by Redis pub/sub channel
+`sentinel:alerts`.
+
+To see the dashboard update live without page refreshes, run the live replay script:
+```bash
+backend/venv/bin/python backend/scripts/live_replay.py --interval 3.0
+```
+> **Note on Replay vs. Live Scoring:** `live_replay.py` is a **replay of precomputed scores**,
+> NOT live scoring. It replays the simulated organisation day by day, inserting each day's
+> already-computed records into Postgres and publishing alerts to Redis in real time so the
+> SOC dashboard visibly updates live.
+
+**5. Outbound Notifications (Slack, Telegram, SMTP Email)**
+When alerts meet or exceed the minimum configured risk tier (default `Critical`),
+Sentinel AI dispatches notifications across configured channels:
+- Slack incoming webhook (`SLACK_WEBHOOK_URL`)
+- Telegram bot (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`)
+- SMTP email (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_TO`)
+
+Notifications strictly convey metadata (employee ID, date, tier, score, rule flags,
+and dashboard case link); file contents are never read or transmitted.
+Alerts are deduplicated per `(employee_id, date)` with a 24-hour Redis TTL.
+All channels are optional and fail-safe. Check status or test delivery:
+- `GET /api/notifications/status`
+- `POST /api/notifications/test`
+
+**6. SOC Security Assistant (Guardrailed Read-Only Queries)**
+The SOC Assistant allows analysts to query threat telemetry in plain English:
+- **No Arbitrary SQL**: Operates exclusively through a whitelisted set of 7 typed SQLAlchemy ORM queries (max 90 days, max 50 rows).
+- **Dual Mode**:
+  - `ollama`: Uses Ollama `/api/chat` with native function calling.
+  - `fallback`: Deterministic regex/keyword intent router that executes the same tools when no LLM is running.
+- **Anti-Prompt-Injection**: Rejects attempts to alter rules, execute SQL, or drop tables.
+- **Audited**: Every query, execution mode, and tool called is recorded in `assistant_audit_log`.
+- Slide-over chat panel available via the floating button on the SOC Dashboard.
+
+
+
 ## What's real vs. simulated
 
 - **Real**: Postgres, Redis, the FastAPI API, all four detection models, the

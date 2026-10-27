@@ -61,3 +61,11 @@ def ping() -> bool:
         return _client.ping()
     except Exception:
         return False
+
+
+def publish_alert(alert: dict, channel: str = None) -> int:
+    """Publish a High or Critical alert JSON message to the Redis pub/sub alerts channel."""
+    channel = channel or settings.alerts_channel
+    payload = json.dumps(alert, default=_json_default)
+    return _client.publish(channel, payload)
+

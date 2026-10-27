@@ -9,16 +9,19 @@ Run directly to (re)seed the demo dataset:
     python -m app.pipeline
 """
 import sys
+from datetime import datetime
 
 from app.database import SessionLocal, init_db
 from app.models import Employee, RiskRecord, RawMetadataEvent
 from app.collectors.simulator import generate_dataset, SEEDED_SCENARIOS
-from app.queue import push_events, drain_events, queue_depth
+from app.queue import push_events, drain_events, queue_depth, publish_alert
 from app.profiling import build_feature_matrix
 from app.detection.engine import DetectionEngine
 from app.risk_engine import compute_risk
 from app.agent import explain
 from app.graph import build_graph, persist_graph
+from app.notifiers import notify_alert
+
 
 
 def run_pipeline(include_live: bool = False):
@@ -65,8 +68,48 @@ def run_pipeline(include_live: bool = False):
             db.merge(Employee(id=emp["id"], name=emp["name"], department=emp["department"]))
         db.commit()
 
+        # Persist upload events into raw_metadata_events table (metadata only)
+        risky_dest_set = {
+            "personal-gdrive", "personal-dropbox", "unknown-cloud",
+            "personal-email", "usb-mass-storage", "personal-cloud-sync"
+        }
+        upload_events = []
+        for e in drained:
+            if e.get("event_type") == "upload":
+                ts = e.get("timestamp")
+                if isinstance(ts, str):
+                    ts = datetime.fromisoformat(ts)
+                payload = e.get("payload", {})
+                dest = payload.get("destination", "unknown")
+                is_risky = bool(
+                    dest in risky_dest_set
+                    or "personal" in str(dest).lower()
+                    or "unknown" in str(dest).lower()
+                    or "usb" in str(dest).lower()
+                    or payload.get("risky_extension")
+                    or payload.get("risky")
+                )
+                upload_events.append(RawMetadataEvent(
+                    employee_id=e["employee_id"],
+                    event_type="upload",
+                    timestamp=ts,
+                    payload={
+                        "destination": dest,
+                        "size_mb": round(float(payload.get("size_mb", 0.0)), 2),
+                        "file_count": int(payload.get("file_count", 1)),
+                        "risky": is_risky,
+                    },
+                    source=e.get("source", "simulator"),
+                ))
+        if upload_events:
+            db.bulk_save_objects(upload_events)
+            db.commit()
+
         feature_cols = [c for c in df.columns if c not in ("employee_id", "date")]
+
         for idx, row in risked.iterrows():
+            tier = row["risk_tier"]
+            explanation_text = explanations.get(idx)
             db.add(RiskRecord(
                 employee_id=row["employee_id"],
                 date=row["date"],
@@ -75,14 +118,25 @@ def run_pipeline(include_live: bool = False):
                 lstm_score=float(row["lstm_score"]),
                 xgboost_score=float(row["xgboost_score"]),
                 risk_score=float(row["risk_score"]),
-                risk_tier=row["risk_tier"],
+                risk_tier=tier,
                 rule_flags=row["rule_flags"],
-                explanation=explanations.get(idx),
+                explanation=explanation_text,
                 agent_source=sources.get(idx, "template"),
                 features={c: (float(row[c]) if isinstance(row[c], (int, float)) else row[c]) for c in feature_cols},
                 is_ground_truth_anomaly=int(row["employee_id"] in SEEDED_SCENARIOS),
                 scenario=SEEDED_SCENARIOS.get(row["employee_id"]),
             ))
+            if tier in ("High", "Critical"):
+                alert_payload = {
+                    "employee_id": row["employee_id"],
+                    "date": str(row["date"]),
+                    "risk_score": float(row["risk_score"]),
+                    "risk_tier": tier,
+                    "rule_flags": row["rule_flags"] if isinstance(row["rule_flags"], list) else [],
+                    "explanation": explanation_text or "",
+                }
+                publish_alert(alert_payload)
+                notify_alert(alert_payload)
         db.commit()
 
         risk_map = {(r.employee_id, r.date): r.risk_tier for r in risked.itertuples()}

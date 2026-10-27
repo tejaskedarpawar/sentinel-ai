@@ -81,14 +81,24 @@ class DetectionEngine:
             for pos, row_idx in enumerate(idx_list):
                 lstm_score[df.index.get_loc(row_idx)] = min(seq_scores[pos], 2.0) / 2.0
 
-        # 4. XGBoost — weakly supervised on Isolation Forest's top decile
-        pseudo_labels = (raw_iso >= np.quantile(raw_iso, 0.92)).astype(int)
-        self.xgb_model = xgb.XGBClassifier(
-            n_estimators=150, max_depth=3, learning_rate=0.1,
-            eval_metric="logloss", random_state=42,
-        )
-        self.xgb_model.fit(X, pseudo_labels)
-        xgb_score = self.xgb_model.predict_proba(X)[:, 1]
+        # 4. XGBoost — supervised if artifact exists, else fallback to pseudo-labels
+        from app.detection.retrain import load_supervised_model
+        artifact = load_supervised_model()
+        if artifact is not None:
+            self.xgb_model = artifact["model"]
+            self.xgb_mode = "supervised"
+            print(f"[DetectionEngine] Using supervised XGBoost model from artifact (trained: {artifact.get('trained_at')})")
+            xgb_score = self.xgb_model.predict_proba(X)[:, 1]
+        else:
+            self.xgb_mode = "pseudo"
+            print("[DetectionEngine] No supervised artifact found. Training XGBoost on Isolation Forest pseudo-labels.")
+            pseudo_labels = (raw_iso >= np.quantile(raw_iso, 0.92)).astype(int)
+            self.xgb_model = xgb.XGBClassifier(
+                n_estimators=150, max_depth=3, learning_rate=0.1,
+                eval_metric="logloss", random_state=42,
+            )
+            self.xgb_model.fit(X, pseudo_labels)
+            xgb_score = self.xgb_model.predict_proba(X)[:, 1]
 
         out = df.copy()
         # Robust-normalise each model's raw anomaly signal before
@@ -99,4 +109,30 @@ class DetectionEngine:
         out["autoencoder_score"] = _robust_normalize(self.ae.score(X))
         out["lstm_score"] = _robust_normalize(lstm_score * 2.0)  # undo the /2.0 clip-scale above
         out["xgboost_score"] = xgb_score  # already a calibrated 0-1 probability
+        out["xgboost_mode"] = self.xgb_mode
+
+        # Persist explainer artifact needed for TreeSHAP explainability (no SHAP computed here)
+        try:
+            import os, joblib
+            from datetime import datetime
+            artifacts_dir = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "..", "..", "artifacts")
+            )
+            os.makedirs(artifacts_dir, exist_ok=True)
+            bg_size = min(50, len(X))
+            bg_indices = np.random.choice(len(X), size=bg_size, replace=False) if len(X) > 0 else []
+            explainer_data = {
+                "model": self.xgb_model,
+                "feature_columns": MODEL_FEATURE_COLUMNS,
+                "background_sample": X[bg_indices] if len(bg_indices) > 0 else np.empty((0, len(MODEL_FEATURE_COLUMNS))),
+                "trained_at": datetime.utcnow().isoformat(),
+                "mode": self.xgb_mode,
+            }
+            explainer_path = os.path.join(artifacts_dir, "xgb_explainer.joblib")
+            joblib.dump(explainer_data, explainer_path)
+            print(f"[DetectionEngine] Persisted XGBoost explainer artifact to {explainer_path}")
+        except Exception as e:
+            print(f"[DetectionEngine] Warning: Could not persist explainer artifact: {e}")
+
+        print(f"[DetectionEngine] Completed scoring with XGBoost mode: {self.xgb_mode}")
         return out

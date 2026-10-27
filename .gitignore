@@ -30,6 +30,7 @@ out/
 *.sqlite
 *.sqlite3
 *.db
+*.rdb
 
 # IDE & OS
 .vscode/

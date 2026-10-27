@@ -1,8 +1,24 @@
-from sqlalchemy import Column, String, Float, Integer, Date, DateTime, Text, ForeignKey, JSON
+from sqlalchemy import Column, String, Float, Integer, Date, DateTime, Text, ForeignKey, JSON, UniqueConstraint, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
 from app.database import Base
+
+
+class User(Base):
+    """User accounts for SOC analysts and administrators."""
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    full_name = Column(String(100), nullable=False)
+    email = Column(String(120), nullable=True)
+    role = Column(String(30), default="analyst", nullable=False)  # "admin" | "analyst" | "viewer"
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_login = Column(DateTime, nullable=True)
+
 
 
 class Employee(Base):
@@ -80,3 +96,81 @@ class RawMetadataEvent(Base):
     timestamp = Column(DateTime, nullable=False)
     payload = Column(JSON, default=dict)
     source = Column(String, default="simulator")  # "simulator" | "live"
+
+
+class AnalystFeedback(Base):
+    """Analyst review feedback for a given employee-day alert.
+    Survives pipeline re-runs because it lives in its own table keyed
+    by (employee_id, date) with no foreign key to risk_records."""
+    __tablename__ = "analyst_feedback"
+    __table_args__ = (
+        UniqueConstraint("employee_id", "date", name="uq_analyst_feedback_emp_date"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    employee_id = Column(String, nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    label = Column(String, nullable=False)  # "threat" | "false_positive"
+    analyst = Column(String, default="analyst", nullable=False)
+    note = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AlertCase(Base):
+    """Case management for an employee-day alert.
+    Survives pipeline re-runs because it lives in its own table keyed
+    by (employee_id, date) with no foreign key to risk_records."""
+    __tablename__ = "alert_cases"
+    __table_args__ = (
+        UniqueConstraint("employee_id", "date", name="uq_alert_cases_emp_date"),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    employee_id = Column(String, nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    status = Column(String, default="New", nullable=False)  # "New" | "Investigating" | "Resolved"
+    assignee = Column(String, nullable=True)
+    priority = Column(String, nullable=True)  # "Critical" | "High" | "Medium" | "Low"
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class CaseNote(Base):
+    """Analyst notes attached to an alert case (employee_id, date).
+    Survives pipeline re-runs."""
+    __tablename__ = "case_notes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    employee_id = Column(String, nullable=False, index=True)
+    date = Column(Date, nullable=False, index=True)
+    author = Column(String, default="analyst", nullable=False)
+    text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AssistantAuditLog(Base):
+    """Audit log of analyst chat interactions with the SOC Assistant.
+    Tracks question asked, tools called, execution mode, and timestamp."""
+    __tablename__ = "assistant_audit_log"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False)
+    question = Column(Text, nullable=False)
+    tools_called = Column(JSON, default=list, nullable=False)
+    mode = Column(String, nullable=False)  # "ollama" | "fallback"
+
+
+class EvaluationRun(Base):
+    """Stores benchmark evaluation results on real/synthetic datasets (e.g. CERT r4.2)."""
+    __tablename__ = "evaluation_runs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    dataset = Column(String, nullable=False)  # e.g. "CERT r4.2"
+    n_users = Column(Integer, nullable=False)
+    n_days = Column(Integer, nullable=False)
+    config = Column(JSON, default=dict, nullable=False)
+    metrics = Column(JSON, default=dict, nullable=False)
+    curves = Column(JSON, default=dict, nullable=False)
+
+

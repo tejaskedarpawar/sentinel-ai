@@ -1,14 +1,14 @@
 const TIER_STYLES = {
-  Low: "bg-emerald-500/15 text-emerald-400 ring-emerald-500/30",
-  Medium: "bg-yellow-500/15 text-yellow-400 ring-yellow-500/30",
-  High: "bg-orange-500/15 text-orange-400 ring-orange-500/30",
-  Critical: "bg-red-500/15 text-red-400 ring-red-500/30",
+  Low: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+  Medium: "bg-yellow-50 text-yellow-800 ring-yellow-200",
+  High: "bg-amber-50 text-amber-800 ring-amber-200",
+  Critical: "bg-rose-50 text-rose-700 ring-rose-200",
 };
 
 export default function TierBadge({ tier }) {
   const style = TIER_STYLES[tier] || TIER_STYLES.Low;
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ring-1 ${style}`}>
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ring-1 ${style}`}>
       {tier}
     </span>
   );
